@@ -84,7 +84,12 @@ def optimize_advi_mean_field(
     means = reconstruct(means_flat, summary, jnp.reshape)
     sds = reconstruct(jnp.exp(log_sds_flat), summary, jnp.reshape)
 
-    to_return = {"free_means": means, "free_sds": sds, "opt_result": result}
+    to_return = {
+        "free_means": means,
+        "free_sds": sds,
+        "opt_result": result,
+        "constrained_means": apply_constraints(means, constrain_fun_dict)[0],
+    }
 
     if n_draws is not None:
         # Make draws from the parameters and constrain them
