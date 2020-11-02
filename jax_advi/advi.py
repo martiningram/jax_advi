@@ -10,7 +10,7 @@ from typing import Tuple, Dict, Callable, Any
 
 
 @jit
-def make_draws(z, mean, log_sd):
+def _make_draws(z, mean, log_sd):
 
     draw = z * jnp.exp(log_sd) + mean
 
@@ -18,7 +18,7 @@ def make_draws(z, mean, log_sd):
 
 
 @jit
-def calculate_entropy(log_sds):
+def _calculate_entropy(log_sds):
 
     return -jnp.sum(log_sds)
 
@@ -27,7 +27,7 @@ def optimize_advi_mean_field(
     theta_shape_dict: Dict[str, Tuple],
     log_prior_fun: Callable[[Dict[str, jnp.ndarray]], float],
     log_lik_fun: Callable[[Dict[str, jnp.ndarray]], float],
-    M: int = 25,
+    M: int = 100,
     constrain_fun_dict: Dict[
         str, Callable[[jnp.ndarray], Tuple[jnp.ndarray, float]]
     ] = {},
@@ -51,7 +51,7 @@ def optimize_advi_mean_field(
             returning their log likelihood.
         M: The number of Monte Carlo samples to use to optimize ADVI. Defaults to
             25. More is better, but yields diminishing returns. Giordano et
-            al. suggests 10 may be enough, so 25 should be fairly conservative.
+            al. suggests 10 may be enough, so 100 should be fairly conservative.
         constrain_fun_dict: A dictionary of the constraints the parameters have to
             satisfy. For example, variance parameters are constrained to be positive
             and can be constrained with the `constrain_positive` function. The
@@ -93,11 +93,11 @@ def optimize_advi_mean_field(
 
         var_params = var_params_flat.reshape(2, -1)
 
-        cur_entropy = calculate_entropy(var_params[1])
+        cur_entropy = _calculate_entropy(var_params[1])
 
         def calculate_log_posterior(cur_z):
 
-            cur_flat_theta = make_draws(cur_z, var_params[0], var_params[1])
+            cur_flat_theta = _make_draws(cur_z, var_params[0], var_params[1])
             cur_theta = reconstruct(cur_flat_theta, summary, jnp.reshape)
 
             # Compute the log determinant of the constraints
