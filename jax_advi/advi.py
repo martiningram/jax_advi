@@ -30,7 +30,7 @@ def optimize_advi_mean_field(
     constrain_fun_dict={},
     verbose=False,
     seed=2,
-    n_draws=None,
+    n_draws=1000,
 ):
 
     # First, create placeholders for the theta dict so we know how to
@@ -88,28 +88,37 @@ def optimize_advi_mean_field(
         "free_means": means,
         "free_sds": sds,
         "opt_result": result,
-        "constrained_means": apply_constraints(means, constrain_fun_dict)[0],
     }
 
     if n_draws is not None:
         # Make draws from the parameters and constrain them
-        draws = np.random.normal(
-            loc=means_flat,
-            scale=jnp.exp(log_sds_flat),
-            size=(n_draws, means_flat.shape[0]),
+
+        to_return["draws"] = get_posterior_draws(
+            means, sds, constrain_fun_dict, n_draws
         )
 
-        def to_vmap(cur_draw):
-
-            cur_unconstrained = reconstruct(cur_draw, summary, jnp.reshape)
-            cur_constrained, _ = apply_constraints(
-                cur_unconstrained, constrain_fun_dict
-            )
-
-            return cur_constrained
-
-        constrained_draws = vmap(to_vmap)(draws)
-
-        to_return["draws"] = constrained_draws
-
     return to_return
+
+
+def get_posterior_draws(
+    free_means, free_sds, constrain_fun_dict, n_draws=1000, fun_to_apply=lambda x: x
+):
+
+    # Make the draws
+    draws = {
+        x: np.random.normal(
+            loc=free_means[x], scale=free_sds[x], size=(n_draws, *free_means[x].shape)
+        )
+        for x in free_means
+    }
+
+    def to_vmap(cur_draw):
+
+        cur_constrained, _ = apply_constraints(cur_draw, constrain_fun_dict)
+        function_result = fun_to_apply(cur_constrained)
+
+        return function_result
+
+    constrained_draws = vmap(to_vmap)(draws)
+
+    return constrained_draws
