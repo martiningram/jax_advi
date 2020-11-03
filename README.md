@@ -22,7 +22,9 @@ To install, clone this repository and run `python setup.py develop`.
 The key function is `optimize_advi_mean_field`. Here's a simple example of a logistic regression:
 
 Model:
+
 ![log_reg_model](images/log_reg_model.png)
+
 Code:
 ```python
 from jax_advi.advi import optimize_advi_mean_field
@@ -74,6 +76,7 @@ As promised, good means, less reliable standard deviations.
 A more complex example is the following hierarchical model:
 
 ![bradley_terry](images/bradley_terry.png)
+
 You can read a bit more about it in [the blog post](https://martiningram.github.io/deterministic-advi/) if you like. Here's what the code looks like:
 
 Define shapes:
