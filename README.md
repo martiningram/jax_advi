@@ -142,5 +142,5 @@ You can run the example and compare it against Stan [using the example notebook]
 The fit took 10s on my laptop with a GTX 2070, compared to 100 minutes in Stan, so you do get quite a speedup. It's also more accurate than Stan's ADVI, which gives the following means:
 
 ![stan_advi](images/tennis_comparison_stan_advi.png)
-I hope you find this library useful. Please raise issues if anything doesn't work. Please note that this is still a new package and I wouldn't recommend to use it for anything serious just yet, although its mean estimates seem reliable so far. If you find examples that break it, I'd be very keen to see them.
+I hope you find this library useful. Please raise issues if anything doesn't work. Please note that this is still a new package and I wouldn't trusting it blindly yet. Its mean estimates seem reliable so far, but I recommend checking them against Stan's (or another MCMC framework) to be sure. If you find examples that break it, I'd be very interested to see them.
 
