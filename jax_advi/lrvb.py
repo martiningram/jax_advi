@@ -26,6 +26,16 @@ def column_generator(n_params):
         yield cur_column
 
 
+def draw_from_mvn_cholesky(mean, cov, size=1):
+
+    L = jnp.linalg.cholesky(cov)
+    z = np.random.randn(size, mean.shape[0])
+
+    draws = vmap(lambda cur_z: jnp.matmul(L, cur_z) + mean)(z)
+
+    return draws
+
+
 def split_every(n, iterable):
     # Credit to:
     # https://stackoverflow.com/questions/1915170/split-a-generator-iterable-every-n-items-in-python-splitevery
@@ -94,9 +104,7 @@ def get_posterior_draws_lrvb(
 ):
 
     # Make the draws
-    draws = np.random.multivariate_normal(
-        mean=free_means_flat, cov=lrvb_cov_mat, size=n_draws
-    )
+    draws = draw_from_mvn_cholesky(free_means_flat, lrvb_cov_mat, size=n_draws)
 
     def to_vmap(cur_draw):
 

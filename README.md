@@ -2,7 +2,7 @@
 
 #### What is this?
 
-JAX ADVI is a small library designed to do black-box variational inference using automatic differentiation variational inference ([ADVI](https://jmlr.org/papers/v18/16-107.html)). Specifically, it implements the variant proposed by [Giordano et al.](https://jmlr.org/papers/v19/17-670.html) which allows the use of (approximate) second order methods, which can be more robust. You can read about the methodology [on my blog](https://martiningram.github.io/deterministic-advi/).
+JAX ADVI is a small library designed to do black-box variational inference using automatic differentiation variational inference ([ADVI](https://jmlr.org/papers/v18/16-107.html)) using [JAX](https://github.com/google/jax). Specifically, it implements the variant proposed by [Giordano et al.](https://jmlr.org/papers/v19/17-670.html) which allows the use of (approximate) second order methods, which can be more robust. You can read about the methodology [on my blog](https://martiningram.github.io/deterministic-advi/).
 
 #### How do I use it?
 
