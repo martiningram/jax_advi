@@ -49,6 +49,38 @@ def _calculate_objective(
     return -jnp.mean(individual_log_posteriors) + cur_entropy
 
 
+def _build_objective_fun(
+    theta_shape_dict, constrain_fun_dict, log_lik_fun, log_prior_fun, seed, M
+):
+
+    # First, create placeholders for the theta dict so we know how to
+    # reconstruct it [TODO: could avoid this step]
+    theta = {x: jnp.empty(y) for x, y in theta_shape_dict.items()}
+
+    flat_theta, summary = flatten_and_summarise(**theta)
+
+    # Initialise variational parameters
+    # First row is means, second is log_sd
+    np.random.seed(seed)
+
+    # Fixed draws from standard normal a la Giordano et al:
+    # https://www.jmlr.org/papers/v19/17-670.html
+    # TODO: Could use JAX here to draw things (but probably not essential)
+    zs = np.random.randn(M, flat_theta.shape[0])
+
+    # Curry the objective function
+    to_minimize = partial(
+        _calculate_objective,
+        summary=summary,
+        constrain_fun_dict=constrain_fun_dict,
+        log_lik_fun=log_lik_fun,
+        log_prior_fun=log_prior_fun,
+        zs=zs,
+    )
+
+    return flat_theta, summary, to_minimize
+
+
 def optimize_advi_mean_field(
     theta_shape_dict: Dict[str, Tuple],
     log_prior_fun: Callable[[Dict[str, jnp.ndarray]], float],
@@ -102,15 +134,9 @@ def optimize_advi_mean_field(
     appropriately transformed.
     """
 
-    # First, create placeholders for the theta dict so we know how to
-    # reconstruct it [TODO: could avoid this step]
-    theta = {x: jnp.empty(y) for x, y in theta_shape_dict.items()}
-
-    flat_theta, summary = flatten_and_summarise(**theta)
-
-    # Initialise variational parameters
-    # First row is means, second is log_sd
-    np.random.seed(seed)
+    flat_theta, summary, to_minimize = _build_objective_fun(
+        theta_shape_dict, constrain_fun_dict, log_lik_fun, log_prior_fun, seed, M
+    )
 
     var_params = np.stack(
         [
@@ -118,21 +144,6 @@ def optimize_advi_mean_field(
             np.random.normal(*var_param_inits["log_sd"], size=flat_theta.shape[0]),
         ],
         axis=0,
-    )
-
-    # Fixed draws from standard normal a la Giordano et al:
-    # https://www.jmlr.org/papers/v19/17-670.html
-    # TODO: Could use JAX here to draw things (but probably not essential)
-    zs = np.random.randn(M, flat_theta.shape[0])
-
-    # Curry the objective function
-    to_minimize = partial(
-        _calculate_objective,
-        summary=summary,
-        constrain_fun_dict=constrain_fun_dict,
-        log_lik_fun=log_lik_fun,
-        log_prior_fun=log_prior_fun,
-        zs=zs,
     )
 
     with_grad = partial(convert_decorator, verbose=verbose)(
@@ -151,6 +162,8 @@ def optimize_advi_mean_field(
         "free_sds": sds,
         "opt_result": result,
         "objective_fun": to_minimize,
+        "shape_summary": summary,
+        "final_var_params_flat": result.x,
     }
 
     if n_draws is not None:
