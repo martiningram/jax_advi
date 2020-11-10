@@ -23,6 +23,32 @@ def _calculate_entropy(log_sds):
     return -jnp.sum(log_sds)
 
 
+def _calculate_objective(
+    var_params_flat, summary, constrain_fun_dict, log_lik_fun, log_prior_fun, zs
+):
+
+    var_params = var_params_flat.reshape(2, -1)
+
+    cur_entropy = _calculate_entropy(var_params[1])
+
+    def calculate_log_posterior(cur_z):
+
+        cur_flat_theta = _make_draws(cur_z, var_params[0], var_params[1])
+        cur_theta = reconstruct(cur_flat_theta, summary, jnp.reshape)
+
+        # Compute the log determinant of the constraints
+        cur_theta, cur_log_det = apply_constraints(cur_theta, constrain_fun_dict)
+
+        cur_likelihood = log_lik_fun(cur_theta)
+        cur_prior = log_prior_fun(cur_theta)
+
+        return cur_likelihood + cur_prior + cur_log_det
+
+    individual_log_posteriors = vmap(calculate_log_posterior)(zs)
+
+    return -jnp.mean(individual_log_posteriors) + cur_entropy
+
+
 def optimize_advi_mean_field(
     theta_shape_dict: Dict[str, Tuple],
     log_prior_fun: Callable[[Dict[str, jnp.ndarray]], float],
@@ -34,6 +60,10 @@ def optimize_advi_mean_field(
     verbose: bool = False,
     seed: int = 2,
     n_draws: int = 1000,
+    var_param_inits: Dict[str, Tuple[float, float]] = {
+        "mean": (0.0, 0.0),
+        "log_sd": (0.0, 0.0),
+    },
 ) -> Dict[str, Any]:
     """Minimizes the KL divergence between the posterior defined by the
     `log_prior_fun` and `log_lik_fun` and a mean-field variational Bayes
@@ -80,37 +110,30 @@ def optimize_advi_mean_field(
 
     # Initialise variational parameters
     # First row is means, second is log_sd
-    var_params = np.zeros((2, flat_theta.shape[0]))
-
     np.random.seed(seed)
+
+    var_params = np.stack(
+        [
+            np.random.normal(*var_param_inits["mean"], size=flat_theta.shape[0]),
+            np.random.normal(*var_param_inits["log_sd"], size=flat_theta.shape[0]),
+        ],
+        axis=0,
+    )
 
     # Fixed draws from standard normal a la Giordano et al:
     # https://www.jmlr.org/papers/v19/17-670.html
     # TODO: Could use JAX here to draw things (but probably not essential)
     zs = np.random.randn(M, flat_theta.shape[0])
 
-    def to_minimize(var_params_flat):
-
-        var_params = var_params_flat.reshape(2, -1)
-
-        cur_entropy = _calculate_entropy(var_params[1])
-
-        def calculate_log_posterior(cur_z):
-
-            cur_flat_theta = _make_draws(cur_z, var_params[0], var_params[1])
-            cur_theta = reconstruct(cur_flat_theta, summary, jnp.reshape)
-
-            # Compute the log determinant of the constraints
-            cur_theta, cur_log_det = apply_constraints(cur_theta, constrain_fun_dict)
-
-            cur_likelihood = log_lik_fun(cur_theta)
-            cur_prior = log_prior_fun(cur_theta)
-
-            return cur_likelihood + cur_prior + cur_log_det
-
-        individual_log_posteriors = vmap(calculate_log_posterior)(zs)
-
-        return -jnp.mean(individual_log_posteriors) + cur_entropy
+    # Curry the objective function
+    to_minimize = partial(
+        _calculate_objective,
+        summary=summary,
+        constrain_fun_dict=constrain_fun_dict,
+        log_lik_fun=log_lik_fun,
+        log_prior_fun=log_prior_fun,
+        zs=zs,
+    )
 
     with_grad = partial(convert_decorator, verbose=verbose)(
         jit(value_and_grad(to_minimize))
@@ -127,6 +150,7 @@ def optimize_advi_mean_field(
         "free_means": means,
         "free_sds": sds,
         "opt_result": result,
+        "objective_fun": to_minimize,
     }
 
     if n_draws is not None:
