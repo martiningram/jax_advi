@@ -7,6 +7,7 @@ from .utils.misc import convert_decorator
 from functools import partial
 from scipy.optimize import minimize
 from typing import Tuple, Dict, Callable, Any
+from .optimization import optimize_with_jac, optimize_with_hvp
 
 
 @jit
@@ -20,7 +21,21 @@ def _make_draws(z, mean, log_sd):
 @jit
 def _calculate_entropy(log_sds):
 
-    return -jnp.sum(log_sds)
+    return jnp.sum(log_sds)
+
+
+def _calculate_log_posterior(
+    flat_theta, log_lik_fun, log_prior_fun, constrain_fun_dict, summary
+):
+
+    cur_theta = reconstruct(flat_theta, summary, jnp.reshape)
+
+    # Compute the log determinant of the constraints
+    cur_theta, cur_log_det = apply_constraints(cur_theta, constrain_fun_dict)
+    cur_likelihood = log_lik_fun(cur_theta)
+    cur_prior = log_prior_fun(cur_theta)
+
+    return cur_likelihood + cur_prior + cur_log_det
 
 
 def _calculate_objective(
@@ -34,19 +49,14 @@ def _calculate_objective(
     def calculate_log_posterior(cur_z):
 
         cur_flat_theta = _make_draws(cur_z, var_params[0], var_params[1])
-        cur_theta = reconstruct(cur_flat_theta, summary, jnp.reshape)
 
-        # Compute the log determinant of the constraints
-        cur_theta, cur_log_det = apply_constraints(cur_theta, constrain_fun_dict)
-
-        cur_likelihood = log_lik_fun(cur_theta)
-        cur_prior = log_prior_fun(cur_theta)
-
-        return cur_likelihood + cur_prior + cur_log_det
+        return _calculate_log_posterior(
+            cur_flat_theta, log_lik_fun, log_prior_fun, constrain_fun_dict, summary
+        )
 
     individual_log_posteriors = vmap(calculate_log_posterior)(zs)
 
-    return -jnp.mean(individual_log_posteriors) + cur_entropy
+    return -jnp.mean(individual_log_posteriors) - cur_entropy
 
 
 def _build_objective_fun(
@@ -96,6 +106,7 @@ def optimize_advi_mean_field(
         "mean": (0.0, 0.0),
         "log_sd": (0.0, 0.0),
     },
+    opt_method="trust-ncg",
 ) -> Dict[str, Any]:
     """Minimizes the KL divergence between the posterior defined by the
     `log_prior_fun` and `log_lik_fun` and a mean-field variational Bayes
@@ -150,7 +161,14 @@ def optimize_advi_mean_field(
         jit(value_and_grad(to_minimize))
     )
 
-    result = minimize(with_grad, var_params.reshape(-1), method="L-BFGS-B", jac=True)
+    if opt_method == "L-BFGS-B":
+        result = optimize_with_jac(
+            to_minimize, var_params.reshape(-1), method_name=opt_method, verbose=verbose
+        )
+    else:
+        result = optimize_with_hvp(
+            to_minimize, var_params.reshape(-1), method_name=opt_method, verbose=verbose
+        )[0]
 
     means_flat, log_sds_flat = result.x.reshape(2, -1)
 
@@ -211,3 +229,9 @@ def get_posterior_draws(
     constrained_draws = vmap(to_vmap)(draws)
 
     return constrained_draws
+
+
+def get_pickleable_subset(fit_results):
+
+    # Everything except the objective function should be OK
+    return {x: y for x, y in fit_results.items() if x != "objective_fun"}
