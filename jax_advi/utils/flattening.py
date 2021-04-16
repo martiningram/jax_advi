@@ -3,12 +3,9 @@ from functools import partial
 from collections import namedtuple, OrderedDict
 
 
-array_info = namedtuple("array_info", "shape")
-
-
 def extract_info(array):
 
-    return array_info(shape=array.shape)
+    return array.shape
 
 
 def flatten_and_summarise(**input_arrays):
