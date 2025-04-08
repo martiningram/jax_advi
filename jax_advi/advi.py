@@ -20,8 +20,8 @@ def _make_draws(z, mean, log_sd):
 
 @jit
 def _calculate_entropy(log_sds):
-
-    return jnp.sum(log_sds)
+    d = log_sds.shape[0]
+    return 0.5 * d * (1 + jnp.log(2 * jnp.pi)) + jnp.sum(log_sds)   # to account correctly for the dimension during elbo
 
 
 def _calculate_log_posterior(
